@@ -68,7 +68,10 @@
       </div>
       <!--Table showing list of Clients-->
       <div class="flex flex-col col-span-2">
-        <table class="min-w-full shadow-md rounded">
+        <p v-if="loading" role="status" class="mb-4">Loading clients...</p>
+        <div v-else-if="error" role="alert" class="mb-4 text-red-700">{{ error.message }}</div>
+        <p v-else-if="clients && clients.length === 0" class="mb-4">No clients found.</p>
+        <table v-if="clients && clients.length" class="min-w-full shadow-md rounded">
           <thead class="bg-gray-50 text-xl">
             <tr>
               <th class="p-4 text-left">Name</th>
@@ -77,7 +80,7 @@
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-300">
-            <tr @click="$router.push({ name: 'clientdetails', params: { id: client._id } })" v-for="client in clients"
+            <tr @click="openClient(client._id)" v-for="client in clients"
               :key="client._id" class="cursor-pointer" :class="{ 'hoverRow': hoverId === client._id }"
               @mouseenter="hoverId = client._id" @mouseleave="hoverId = null">
               <td class="p-2 text-left">
@@ -95,81 +98,49 @@
   </main>
 </template>
 
-<script>
+<script setup>
+import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { getClients, searchClients } from '../api/api'
-import { useToast } from 'vue-toastification'
+import { useApi } from '../composables/useApi'
 
-//Notifications
-const toast = useToast()
+const router = useRouter()
+// The shared composable drives the table's loading, error, and result states.
+const { data: clients, loading, error, execute } = useApi(null)
+const searchBy = ref('')
+const firstName = ref('')
+const lastName = ref('')
+const phoneNumber = ref('')
+const hoverId = ref(null)
 
-export default {
-  data() {
-    return {
-      //variable to store all clients and their information for the organization
-      clients: null,
-      // Parameters for search to occur
-      searchBy: '',
-      firstName: '',
-      lastName: '',
-      phoneNumber: '',
-      // variable stores the ID of the row that the mouse is currently hovering over (to highlight the row red)
-      hoverId: null,
-    }
-  },
-  mounted() {
-    // when component is mounted, load the data -
-    this.loadData()
-  },
-  methods: {
-    // method called when component is mounted
-    async loadData() {
-      // Resets all the variables
-      this.searchBy = ''
-      this.firstName = ''
-      this.lastName = ''
-      this.phoneNumber = ''
-
-      // get list of clients
-      try {
-        const response = await getClients();
-        this.clients = response;
-      } catch (error) {
-        toast.error(error)
-      }
-    },
-    // method called when user searches for clients
-    async handleSubmitForm() {
-      // if user searched by client name
-      if (this.searchBy === 'Client Name') {
-        if (this.firstName || this.lastName) {
-          try {
-            const query = {
-              searchBy: 'name',
-              firstName: this.firstName,
-              lastName: this.lastName,
-            }
-            const response = await searchClients(query)
-            this.clients = response;
-          } catch (error) {
-            toast.error(error)
-          }
-        }
-        // if user searches by client phone number
-      } else if (this.searchBy === 'Client Number') {
-        if (this.phoneNumber) {
-          try {
-            const query = {
-              searchBy: 'number',
-              phoneNumber: this.phoneNumber
-            }
-            const response = await searchClients(query)
-            this.clients = response;
-          } catch (error) {
-            toast.error(error)
-          }
-        }
-      }
-    },
-  },
+async function loadData() {
+  // Clearing search resets both the visible controls and the full client list.
+  searchBy.value = ''
+  firstName.value = ''
+  lastName.value = ''
+  phoneNumber.value = ''
+  await execute(getClients)
 }
+
+async function handleSubmitForm() {
+  // Send only the fields for the selected search mode.
+  if (searchBy.value === 'Client Name' && (firstName.value || lastName.value)) {
+    await execute(() => searchClients({
+      searchBy: 'name',
+      firstName: firstName.value,
+      lastName: lastName.value
+    }))
+  } else if (searchBy.value === 'Client Number' && phoneNumber.value) {
+    await execute(() => searchClients({
+      searchBy: 'number',
+      phoneNumber: phoneNumber.value
+    }))
+  }
+}
+
+function openClient(id) {
+  router.push({ name: 'clientdetails', params: { id } })
+}
+
+onMounted(loadData)
 </script>

@@ -13,8 +13,10 @@
               Events Attendance
           </h1>
       
-          <div v-if="!recentEvents.length" class="flex justify-center mt-10">No events found.</div>
-          <table v-if="recentEvents.length" class="min-w-full shadow-md rounded">
+          <div v-if="loading" role="status" class="flex justify-center mt-10">Loading events...</div>
+          <div v-else-if="error" role="alert" class="mt-10 text-center text-red-700">{{ error.message }}</div>
+          <div v-else-if="recentEvents && recentEvents.length === 0" class="flex justify-center mt-10">No events found.</div>
+          <table v-if="recentEvents && recentEvents.length" class="min-w-full shadow-md rounded">
             <thead class="bg-gray-50 text-xl">
               <tr class="p-4 text-left">
                 <th class="p-4 text-left">Event Name</th>
@@ -24,7 +26,7 @@
             </thead>
             <tbody class="divide-y divide-gray-300"> 
               <tr
-                @click="editEvent(event._id)"
+                @click="openEvent(event._id)"
                 v-for="event in recentEvents"
                 :key="event._id"
               >
@@ -35,7 +37,7 @@
             </tbody>
           </table>
           
-          <div v-if="recentEvents.length">
+          <div v-if="recentEvents && recentEvents.length">
             <AttendanceChart
               v-if="!loading && !error"
               :label="labels"
@@ -72,8 +74,10 @@
               Clients by Zip Code
           </h1>
           
-          <div v-if="!zips.length" class="flex justify-center mt-10">No clients found.</div>
-          <table v-if="zips.length" class="min-w-full shadow-md rounded">
+          <div v-if="zipLoading" role="status" class="flex justify-center mt-10">Loading clients...</div>
+          <div v-else-if="zipError" role="alert" class="mt-10 text-center text-red-700">{{ zipError.message }}</div>
+          <div v-else-if="zips && zips.length === 0" class="flex justify-center mt-10">No clients found.</div>
+          <table v-if="zips && zips.length" class="min-w-full shadow-md rounded">
             <thead class="bg-gray-50 text-xl">
               <tr class="p-4 text-left">
                 <th class="p-4 text-left">Zip Number</th>
@@ -90,7 +94,7 @@
               </tr>
             </tbody>
           </table>
-          <div v-if="zips.length" class="flex justify-center mt-10">
+          <div v-if="zips && zips.length" class="flex justify-center mt-10">
             <ZipChart
               v-if="!zipLoading && !zipError"
               :label="zipLabels"
@@ -124,109 +128,46 @@
   </main>
 </template>
 
-<script>
+<script setup>
+import { computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import AttendanceChart from '../components/barChart.vue'
 import ZipChart from '../components/donutZipChart.vue'
 import { getAttendance, getClientsByZipCode } from '../api/api'
+import { useApi } from '../composables/useApi'
+import { formatDate } from '../utils/formatDate'
 
-export default {
-  components: {
-    AttendanceChart,
-    ZipChart,
-  },
-  data() {
-    return {
-      recentEvents: [],
-      zips: [],
-      labels: [],
-      chartData: [],
-      zipLabels: [],
-      zipChartData: [],
-      loading: false,
-      error: null,
-      zipLoading: false,
-      zipError: null
-    }
-  },
-  mounted() {
-    this.getAttendanceData()
-    this.getZipData()
-  },
-  methods: {
-    async getAttendanceData() {
-      try {
-        this.error = null
-        this.loading = true
-        
-        const attendance = await getAttendance();
-        this.recentEvents = attendance;
-        this.labels = attendance.map(
-          (item) => `${item.name} (${this.formatDate(item.date)})`
-        )
-        this.chartData = attendance.map((item) => item.attendees.length)
-      } catch (err) {
-        if (err.response) {
-          // client received an error response (5xx, 4xx)
-          this.error = {
-            title: 'Server Response',
-            message: err.message
-          }
-        } else if (err.request) {
-          // client never received a response, or request never left
-          this.error = {
-            title: 'Unable to Reach Server',
-            message: err.message
-          }
-        } else {
-          // There's probably an error in your code
-          this.error = {
-            title: 'Application Error',
-            message: err.message
-          }
-        }
-      }
-      this.loading = false
-    },
-    async getZipData() {
-      try {
-        this.zipError = null
-        this.zipLoading = true
-        
-        const zipdata = await getClientsByZipCode();
-        this.zips = zipdata;
-        this.zipLabels = zipdata.map((item) => item._id)
-        this.zipChartData = zipdata.map((item) => item.count)
-      } catch (err) {
-        if (err.response) {
-          // client received an error response (5xx, 4xx)
-          this.zipError = {
-            title: 'Server Response',
-            message: err.message
-          }
-        } else if (err.request) {
-          // client never received a response, or request never left
-          this.zipError = {
-            title: 'Unable to Reach Server',
-            message: err.message
-          }
-        } else {
-          // There's probably an error in your code
-          this.zipError = {
-            title: 'Application Error',
-            message: err.message
-          }
-        }
-      }
-      this.zipLoading = false
-    },
-    // method called to format the event date
-    formatDate(date) {
-      const isoDate = new Date(date);
-      const year = isoDate.getUTCFullYear();
-      const month = String(isoDate.getUTCMonth() + 1).padStart(2, '0');
-      const day = String(isoDate.getUTCDate()).padStart(2, '0');
-      return `${month}/${day}/${year}`;
-    },
-  }
+const router = useRouter()
+// Keep dashboard requests independent so one failing section does not hide the other.
+const {
+  data: recentEvents,
+  loading,
+  error,
+  execute: loadAttendance
+} = useApi(null)
+const {
+  data: zips,
+  loading: zipLoading,
+  error: zipError,
+  execute: loadZipData
+} = useApi(null)
+
+// Derive chart labels and values from API data so charts refresh when the data changes.
+const labels = computed(() =>
+  (recentEvents.value || []).map((event) => `${event.name} (${formatDate(event.date)})`)
+)
+const chartData = computed(() =>
+  (recentEvents.value || []).map((event) => event.attendees.length)
+)
+const zipLabels = computed(() => (zips.value || []).map((zip) => zip._id))
+const zipChartData = computed(() => (zips.value || []).map((zip) => zip.count))
+
+function openEvent(id) {
+  router.push({ name: 'eventdetails', params: { id } })
 }
+
+onMounted(() => {
+  loadAttendance(getAttendance)
+  loadZipData(getClientsByZipCode)
+})
 </script>

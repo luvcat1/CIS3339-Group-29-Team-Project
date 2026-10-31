@@ -59,7 +59,10 @@
         <h3 class="italic">Click table row to view event details</h3>
       </div>
       <div class="flex flex-col col-span-2">
-        <table class="min-w-full shadow-md rounded">
+        <p v-if="loading" role="status" class="mb-4">Loading events...</p>
+        <div v-else-if="error" role="alert" class="mb-4 text-red-700">{{ error.message }}</div>
+        <p v-else-if="events && events.length === 0" class="mb-4">No events found.</p>
+        <table v-if="events && events.length" class="min-w-full shadow-md rounded">
           <thead class="bg-gray-50 text-xl">
             <tr>
               <th class="p-4 text-left">Event Name</th>
@@ -68,7 +71,7 @@
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-300">
-            <tr @click="$router.push({name: 'eventdetails', params: { id: event._id } })"
+            <tr @click="openEvent(event._id)"
               v-for="event in events" :key="event._id" class="cursor-pointer"
               :class="{ 'hoverRow': hoverId === event._id }" @mouseenter="hoverId = event._id"
               @mouseleave="hoverId = null">
@@ -83,92 +86,41 @@
   </main>
 </template>
 
-<script>
+<script setup>
+import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { getEvents, searchEvents } from '../api/api'
-import { useToast } from 'vue-toastification'
+import { useApi } from '../composables/useApi'
+import { formatDate } from '../utils/formatDate'
 
-//Notifications
-const toast = useToast()
+const router = useRouter()
+// The shared composable drives the table's loading, error, and result states.
+const { data: events, loading, error, execute } = useApi(null)
+const searchBy = ref('')
+const name = ref('')
+const eventDate = ref('')
+const hoverId = ref(null)
 
-export default {
-  data() {
-    return {
-      //variable to hold all events for the organization
-      events: null,
-      // Parameters for search to occur
-      searchBy: null,
-      name: null,
-      eventDate: null,
-      // variable stores the ID of the row that the mouse is currently hovering over (to highlight the row red)
-      hoverId: null,
-    }
-  },
-  mounted() {
-    // when component is mounted, load the data
-    this.loadData();
-  },
-  methods: {
-    // method called when component is mounted
-    async loadData() {
-      // Resets variables used for search
-      this.searchBy = null
-      this.name = null
-      this.eventDate = null
-
-      // show loading wheel
-      this.isLoading = true;
-      // get list of events
-      try {
-        const response = await getEvents();
-        this.events = response;
-      } catch (error) {
-        toast.error('loadData error', error)
-      }
-    },
-
-    // method called when user searches for an event
-    async handleSubmitForm() {
-      // if user searches by event name
-      if (this.searchBy === 'Event Name') {
-        if (this.name) {
-          try {
-            const query = {
-              searchBy: 'name',
-              name: this.name
-            };
-            const response = await searchEvents(query);
-            this.events = response;
-          } catch (error) {
-            toast.error('Error searching events', error)
-          }
-        }
-        // if user searches by event date
-      } else if (this.searchBy === 'Event Date') {
-        if (this.eventDate) {
-          try {
-            const eventDate = new Date(this.eventDate);
-            const formattedDate = eventDate.toISOString().substring(0, 10);
-            const query = {
-              searchBy: 'date',
-              eventDate: formattedDate
-            };
-            const response = await searchEvents(query);
-            this.events = response;
-          } catch (error) {
-            toast.error('Error searching events:', error)
-          }
-        }
-      }
-    },
-
-    // method called for each event date so it will be formatted correctly on the table
-    formatDate(date) {
-      const isoDate = new Date(date);
-      const year = isoDate.getUTCFullYear();
-      const month = String(isoDate.getUTCMonth() + 1).padStart(2, '0');
-      const day = String(isoDate.getUTCDate()).padStart(2, '0');
-      return `${month}/${day}/${year}`;
-    },
-  },
+async function loadData() {
+  searchBy.value = ''
+  name.value = ''
+  eventDate.value = ''
+  await execute(getEvents)
 }
+
+async function handleSubmitForm() {
+  if (searchBy.value === 'Event Name' && name.value) {
+    await execute(() => searchEvents({ searchBy: 'name', name: name.value }))
+  } else if (searchBy.value === 'Event Date' && eventDate.value) {
+    // Send a date-only value so the API search is not affected by a time-zone offset.
+    const formattedDate = new Date(eventDate.value).toISOString().substring(0, 10)
+    await execute(() => searchEvents({ searchBy: 'date', eventDate: formattedDate }))
+  }
+}
+
+function openEvent(id) {
+  router.push({ name: 'eventdetails', params: { id } })
+}
+
+onMounted(loadData)
 </script>
