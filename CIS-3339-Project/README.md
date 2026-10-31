@@ -1,9 +1,10 @@
 # Data Platform Project Setup
 
-This project has been developed over time by students in the CIS 4339 course.
+This project has been developed over time by students in the CIS 4339/CIS 3339 courses.
 
 The current iteration is based on development done by:
-* Jeremy Griffith and Edwin Charly in Spring of 2023
+* Group 29 consisting of Ngan Tran, Hayden Pham, Kory Phanthavong, Emiliano Ortiz, Jason Montemayor during Fall 2026.
+* Jeremy Griffith and Edwin Charly in Spring of 2023.
 * Elliot Farmer Garcia, Agatha	Molski and Chris Blanco in Fall of 2022.
 
 ## Requirements
@@ -21,5 +22,3 @@ Follow instructions in backend README for setup and running as a local instance.
 cd frontend
 ```
 Follow instructions in frontend README for setup and running as a local instance.
-
-
